@@ -3,16 +3,6 @@ VMworld 2015 Chef Workshop Repo
 
 The repository will be used for the VMworld 2015 Chef Workshop.  If you're unable to attend, or fell asleep during a portion of the workshop, feel free to clone this repository and follow along with this README.
 
-# Pre-requisites
-
-There are a few items that need to be pre-configured in order to provide necessary networking configurations for remote access to provisioned VMs.
-
-* Allocate Public IP
-* Setup jumphost and use for SSH gateway
-* Install [vca-cli](https://github.com/vmware/vca-cli) tool
-* Configure network (NAT/Firewall) settings for SSH and internet access (currently using vca-cli tool)
-* Use [vcair-network-setup script](./scripts/vcair-network-setup.sh) to setup necessary NAT rules
-
 
 # Lab 1 - Chef Introduction
 
@@ -32,6 +22,14 @@ Includes pre-configured items to help with limited time during workshop making i
 2. Unzip somewhere on local machine
 
 ## Chef Development Kit Installation
+
+### From VMworld USB
+
+1. Double-click Chef DK Installer
+	* OSX - ./Chef/chefdk-0.6.2-1.dmg
+	* Windows - ./Chef/chefdk-0.6.2-1.msi
+
+### From Web
 
 1. Go to [https://downloads.chef.io/chef-dk/](https://downloads.chef.io/chef-dk/)
 2. Select necessary package to download (latest as of writing is v0.7.0):
@@ -59,12 +57,11 @@ Includes pre-configured items to help with limited time during workshop making i
 6. Click "Reset Key" download your user pem
 ![Download User Pem](./img/chef-manage-download-user-pem.png?raw=true "Download User Pem")
 7. Add downloaded user pem to `/vmworld-chef-repo/.chef/[username].pem`
+8. Copy `./vmworld-chef-repo/.chef/knife.rb.example` to `./vmworld-chef-repo/.chef/knife.rb` and replace the following items (we'll replace the others later:
+	* INSERT_CHEF_USERNAME
+	* INSERT_CHEF_ORG_SHORTNAME
+9. Run `knife client list` from within your `/vmworld-chef-repo/` directory to verify access to your Chef server. 
 
-## Create a Cookbook
-
-1. Use the Chef DK to generate a new cookbook
-
-		$ chef generate cookbook hello_vmworld
 
 # Lab 2 - vCloud Air + Chef
 
@@ -77,55 +74,44 @@ Includes pre-configured items to help with limited time during workshop making i
 		current_dir = File.dirname(__FILE__)
 		log_level                :info
 		log_location             STDOUT
-		node_name				 ENV['CHEF_USER']
-		client_key               "#{ENV['HOME']}/#{ENV['CHEF_USER']}.pem"
-		chef_server_url          "https://api.opscode.com/organizations/#{ENV['CHEF_ORG']}"
+		node_name				 mychefuser
+		client_key               "#{current_dir}/mychefuser.pem"
+		chef_server_url          "https://api.opscode.com/organizations/mycheforg"
 		cookbook_path            ["#{current_dir}/../cookbooks"]
 
 		# vCloud Air OnDemand Settings
 		knife[:vcair_api_host] = "us-california-1-3.vchs.vmware.com"
-		knife[:vcair_username] = ENV['VCAIR_USERNAME']
-		knife[:vcair_password] = ENV['VCAIR_PASSWORD']
-		knife[:vcair_org]      = ENV['VCAIR_HOST']
-		knife[:vcair_vdc]      = ENV['VCAIR_VDC']
+		knife[:vcair_username] = "VCAIR USERNAME FROM SLIDES"
+		knife[:vcair_password] = "VCAIR PASSWORD FROM SLIDES"
+		knife[:vcair_org]      = "f305cc3c-57ee-40ad-bca0-16a7d5d2a1f9"
+		knife[:vcair_vdc]      = "ChefVDC1"
 		knife[:vcair_api_path] = '/api/compute/api'
 
-3. Update `hello_vmworld::default` recipe
+3. Upload cookbook to the Chef Server - be sure you're in /vmworld-chef-repo/ directory
 
-		# ./hello_vmworld/recipes/default.rb
+		$ knife cookbook upload hello_vmworld
 
-		package 'httpd' do
-			action :install
-		end
+4. Create and bootstrap vCloud Air VM
 
-		file '/var/www/html/index.html' do
-			content 'Hello VMworld!'
-			action :create
-		end
+		knife vcair server create --ssh-password vmworld2015 --image "CentOS64-64BIT" --node-name YOURNAME-chef-node --customization-script bootstrap/install-linux-vcair-example.sh --run-list 'recipe[hello_vmworld::default]' --ssh-gateway root@107.189.120.118 --fog-version 1.33.0 --vcair-net chef-routed-network --no-host-key-verify
 
-		service 'httpd' do
-			action [:enable, :start]
-		end
+# Troubleshooting
 
-		service 'iptables' do
-			action :stop
-		end
+### winrm gem Conflicts
 
-4. Upload cookbook to the Chef Server
+If you see something along these lines:
 
-		$ knife cookbook upload hello_vmworld -o /path/to/vmworld-chef-repo/cookbooks
+```
+/opt/chefdk/embedded/lib/ruby/site_ruby/2.1.0/rubygems/specification.rb:2104:in `raise_if_conflicts': Unable to activate winrm-s-0.3.1, because winrm-1.2.0 conflicts with winrm (~> 1.3.0) (Gem::ConflictError)
+	from /opt/chefdk/embedded/lib/ruby/site_ruby/2.1.0/rubygems/specification.rb:1282:in `activate'
+	from /opt/chefdk/embedded/lib/ruby/site_ruby/2.1.0/rubygems/specification.rb:1316:in `block in activate_dependencies'
+	from /opt/chefdk/embedded/lib/ruby/site_ruby/2.1.0/rubygems/specification.rb:1302:in `each'
+	from /opt/chefdk/embedded/lib/ruby/site_ruby/2.1.0/rubygems/specification.rb:1302:in `activate_dependencies'
+	from /opt/chefdk/embedded/lib/ruby/site_ruby/2.1.0/rubygems/specification.rb:1284:in `activate'
+	from /opt/chefdk/embedded/lib/ruby/site_ruby/2.1.0/rubygems/core_ext/kernel_require.rb:117:in `require'
+```
 
-5. Create and bootstrap vCloud Air VM
-
-		$ knife vcair server create \
-			--ssh-password ChangeMe \
-			--image "CentOS64-64BIT" \
-			--node-name YOURNAME-chef-node \
-			--vcair-net vmworld-routed-network \
-			--customization-script bootstrap/install-linux-vcair-example.sh \
-			--no-host-key-verify \
-			--run-list 'recipe[hello_vmworld::default]' \
-			--ssh-gateway root@GATEWAY_IP
+Try running `chef exec gem uninstall winrm -v 1.2.0`
 
 # References
 
