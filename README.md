@@ -95,6 +95,9 @@ Includes pre-configured items to help with limited time during workshop making i
 
 		knife vcair server create --ssh-password vmworld2015 --image "CentOS64-64BIT" --node-name YOURNAME-chef-node --customization-script bootstrap/install-linux-vcair-example.sh --run-list 'recipe[hello_vmworld::default]' --ssh-gateway root@107.189.120.118 --fog-version 1.33.0 --vcair-net chef-routed-network --no-host-key-verify
 
+5. Checkout your new webserver:
+	* Web server Private IP:  192.168.109.20 --> http://107.189.120.118:8020
+
 # Troubleshooting
 
 ### winrm gem Conflicts
